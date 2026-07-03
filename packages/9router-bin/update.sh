@@ -85,32 +85,33 @@ regen_srcinfo() {
     fi
 
     log "makepkg not present — falling back to docker archlinux/base-devel"
+    # Diagnostic: capture the in-place mutated PKGBUILD before docker
+    cp PKGBUILD /tmp/PKGBUILD.before-docker
+    head -25 /tmp/PKGBUILD.before-docker > /tmp/PKGBUILD.head.txt
+    wc -l /tmp/PKGBUILD.before-docker > /tmp/PKGBUILD.wc.txt
+    md5sum /tmp/PKGBUILD.before-docker > /tmp/PKGBUILD.md5.txt
+
     docker run --rm --network=host \
         -v "$PWD:/pkg:z" \
+        -v "/tmp/PKGBUILD.head.txt:/tmp/head.txt:ro" \
+        -v "/tmp/PKGBUILD.wc.txt:/tmp/wc.txt:ro" \
+        -v "/tmp/PKGBUILD.md5.txt:/tmp/md5.txt:ro" \
         -w /pkg \
         archlinux:base-devel \
         bash -c '
             set +e
-            echo "=== bash version ==="
-            bash --version | head -1
-            echo "=== file -i PKGBUILD ==="
-            file -i /pkg/PKGBUILD
-            echo "=== file bytes via hexdump ==="
-            hexdump -C /pkg/PKGBUILD | head -10
-            echo "=== line 22 raw bytes ==="
-            awk "NR==22 {print; exit}" /pkg/PKGBUILD | od -c | head -3
-            echo "=== awk line 22 ==="
-            awk "NR==22" /pkg/PKGBUILD
-            echo "=== wc -l PKGBUILD ==="
-            wc -l /pkg/PKGBUILD
-            echo "=== bash --noprofile --norc -n PKGBUILD ==="
-            env -i bash --noprofile --norc -n /pkg/PKGBUILD 2>&1
-            echo "=== bash --posix -n PKGBUILD ==="
-            env -i bash --noprofile --norc --posix -n /pkg/PKGBUILD 2>&1
-            echo "=== TRY: cat PKGBUILD | bash -n ==="
+            echo "=== bind-mount diff: local vs docker ==="
+            echo "local head:"; cat /tmp/head.txt
+            echo "local wc:"; cat /tmp/wc.txt
+            echo "local md5:"; cat /tmp/md5.txt
+            echo "docker head:"; head -25 /pkg/PKGBUILD
+            echo "docker wc:"; wc -l /pkg/PKGBUILD
+            echo "docker md5:"; md5sum /pkg/PKGBUILD
+            echo "=== bash -n with explicit path ==="
             bash -n /pkg/PKGBUILD 2>&1
-            echo "=== TRY: source PKGBUILD ==="
-            (source /pkg/PKGBUILD 2>&1 || echo SOURCE_FAILED)
+            echo "=== bash -n after tr to strip CR ==="
+            tr -d "\r" < /pkg/PKGBUILD > /tmp/PKGBUILD.lf
+            bash -n /tmp/PKGBUILD.lf 2>&1
         '
 }
 
