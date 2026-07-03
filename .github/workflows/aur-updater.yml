@@ -46,16 +46,13 @@ jobs:
             echo "::error::AUR_SSH_KEY secret not set"
             exit 1
           fi
-          echo "secret length: ${#AUR_SSH_KEY_B64}"
-          echo "first 60 chars: ${AUR_SSH_KEY_B64:0:60}"
-          echo "last 10 chars: ${AUR_SSH_KEY_B64: -10}"
           echo "$AUR_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          # Sanity check the decoded key is a valid OpenSSH private key.
-          head -c 5 ~/.ssh/id_ed25519 | grep -q -- "-----BEGIN" || {
-            echo "::error::Decoded key does not start with -----BEGIN"
-            echo "first 60 bytes of decoded file:"
-            head -c 60 ~/.ssh/id_ed25519 | od -c | head -3
+          # Sanity check: decoded file should be a valid OpenSSH private key.
+          # head -c 5 truncates to "-----B" — use -m1 + full match instead.
+          grep -q -- "-----BEGIN OPENSSH PRIVATE KEY-----" ~/.ssh/id_ed25519 || {
+            echo "::error::Decoded key does not contain -----BEGIN OPENSSH PRIVATE KEY-----"
+            head -c 80 ~/.ssh/id_ed25519 | od -c | head -3
             exit 1
           }
 
