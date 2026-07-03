@@ -77,43 +77,16 @@ txt = re.sub(r"sha256sums=\((.*?)\)", replace_first_hex, txt, count=1, flags=re.
 p.write_text(txt)
 PY
 
-# --- Regenerate .SRCINFO ---------------------------------------------
-regen_srcinfo() {
-    if command -v makepkg >/dev/null 2>&1; then
-        makepkg --printsrcinfo > .SRCINFO
-        return
-    fi
+# --- Regenerate .SRCINFO ----------------------------------------------
+# AUR's git server regenerates .SRCINFO automatically on push (see
+# https://docs.aur.archlinux.org/aur-submission.html), so we don't need
+# to run makepkg locally — and we explicitly avoid it because invoking
+# it inside a Docker container on GitHub Actions has proven unreliable
+# (bind-mount / shell-parser edge cases). If you ever need the file for
+# local testing, run `makepkg --printsrcinfo > .SRCINFO` on an Arch host.
 
-    log "makepkg not present — falling back to docker archlinux/base-devel"
-    docker run --rm --network=host \
-        -v "$PWD:/pkg:z" \
-        -w /pkg \
-        archlinux:base-devel \
-        bash -c '
-            set +e
-            echo "=== sed -n 22p (real line 22 in file) ==="
-            sed -n "22p" /pkg/PKGBUILD
-            echo "=== sed -n 22p | od -c ==="
-            sed -n "22p" /pkg/PKGBUILD | od -c | head -2
-            echo "=== full sed -n 20,24p ==="
-            sed -n "20,24p" /pkg/PKGBUILD
-            echo "=== check for stray chars at line start ==="
-            grep -n "^[^[:print:][:space:]]" /pkg/PKGBUILD | head -5 || echo "no non-printable line starts"
-            echo "=== bash -n on full file ==="
-            bash -n /pkg/PKGBUILD 2>&1
-            echo "=== try each chunk: lines 1-22 only ==="
-            head -22 /pkg/PKGBUILD > /tmp/p1
-            bash -n /tmp/p1 2>&1
-            echo "=== try: lines 1-22 + 39-40 ==="
-            ( head -22 /pkg/PKGBUILD; sed -n "39,40p" /pkg/PKGBUILD ) > /tmp/p2
-            bash -n /tmp/p2 2>&1
-        '
-}
-
-regen_srcinfo
-
-# --- Commit -----------------------------------------------------------
-git add PKGBUILD .SRCINFO
+# --- Commit ------------------------------------------------------------
+git add PKGBUILD .SRCINFO 2>/dev/null || git add PKGBUILD
 git -c user.name='wyf9661' \
     -c user.email='wyf9661@hotmail.com' \
     commit -m "bump 9router-bin to ${new_pkgver}"

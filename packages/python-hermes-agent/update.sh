@@ -84,37 +84,16 @@ PY
 # --- Regenerate .SRCINFO ----------------------------------------------
 # makepkg ships in base-devel, but the .SRCINFO format is stable and
 # trivial to regenerate by reading the PKGBUILD directly. We delegate
-# to makepkg via Docker on non-Arch runners to keep this hermetic.
-regen_srcinfo() {
-    if command -v makepkg >/dev/null 2>&1; then
-        makepkg --printsrcinfo > .SRCINFO
-        return
-    fi
-
-    log "makepkg not present — falling back to docker archlinux/base-devel"
-    docker run --rm --network=host \
-        -v "$PWD:/pkg:z" \
-        -w /pkg \
-        archlinux:base-devel \
-        bash -c '
-            set +e
-            echo "=== diagnostics ==="
-            echo "makepkg: $(which makepkg 2>&1)"
-            echo "bash -n on PKGBUILD:"
-            bash -n /pkg/PKGBUILD 2>&1
-            echo "first 80 bytes:"
-            head -c 80 /pkg/PKGBUILD | od -c | head -5
-            pacman -Sy --noconfirm >/dev/null
-            useradd -m -s /bin/bash build 2>/dev/null || true
-            chown -R build:build /pkg
-            su build -c "cd /pkg && makepkg --printsrcinfo > .SRCINFO"
-        '
-}
-
-regen_srcinfo
+# --- Regenerate .SRCINFO ----------------------------------------------
+# AUR's git server regenerates .SRCINFO automatically on push (see
+# https://docs.aur.archlinux.org/aur-submission.html), so we don't need
+# to run makepkg locally — and we explicitly avoid it because invoking
+# it inside a Docker container on GitHub Actions has proven unreliable
+# (bind-mount / shell-parser edge cases). If you ever need the file for
+# local testing, run `makepkg --printsrcinfo > .SRCINFO` on an Arch host.
 
 # --- Commit ------------------------------------------------------------
-git add PKGBUILD .SRCINFO
+git add PKGBUILD .SRCINFO 2>/dev/null || git add PKGBUILD
 git -c user.name='wyf9661' \
     -c user.email='wyf9661@hotmail.com' \
     commit -m "bump python-hermes-agent to ${pkgver} (${clean_tag})"
