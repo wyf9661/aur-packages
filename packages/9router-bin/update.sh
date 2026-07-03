@@ -91,22 +91,26 @@ regen_srcinfo() {
         archlinux:base-devel \
         bash -c '
             set +e
-            echo "=== diagnostics ==="
-            echo "makepkg: $(which makepkg 2>&1)"
-            echo "npm:     $(which npm 2>&1)"
-            echo "node:    $(which node 2>&1)"
-            echo "=== PKGBUILD first 80 bytes (od) ==="
-            head -c 80 /pkg/PKGBUILD | od -c | head -5
-            echo "=== bash -n on PKGBUILD ==="
+            echo "=== bash version ==="
+            bash --version | head -1
+            echo "=== file -i PKGBUILD ==="
+            file -i /pkg/PKGBUILD
+            echo "=== file bytes via hexdump ==="
+            hexdump -C /pkg/PKGBUILD | head -10
+            echo "=== line 22 raw bytes ==="
+            awk "NR==22 {print; exit}" /pkg/PKGBUILD | od -c | head -3
+            echo "=== awk line 22 ==="
+            awk "NR==22" /pkg/PKGBUILD
+            echo "=== wc -l PKGBUILD ==="
+            wc -l /pkg/PKGBUILD
+            echo "=== bash --noprofile --norc -n PKGBUILD ==="
+            env -i bash --noprofile --norc -n /pkg/PKGBUILD 2>&1
+            echo "=== bash --posix -n PKGBUILD ==="
+            env -i bash --noprofile --norc --posix -n /pkg/PKGBUILD 2>&1
+            echo "=== TRY: cat PKGBUILD | bash -n ==="
             bash -n /pkg/PKGBUILD 2>&1
-            echo "=== makepkg --version ==="
-            makepkg --version 2>&1 | head -3
-            pacman -Sy --noconfirm >/dev/null
-            useradd -m -s /bin/bash build 2>/dev/null || true
-            chown -R build:build /pkg
-            su build -c "cd /pkg && makepkg --printsrcinfo > .SRCINFO"
-            echo "=== SRCINFO head ==="
-            head -5 /pkg/.SRCINFO
+            echo "=== TRY: source PKGBUILD ==="
+            (source /pkg/PKGBUILD 2>&1 || echo SOURCE_FAILED)
         '
 }
 
