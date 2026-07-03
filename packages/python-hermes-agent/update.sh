@@ -92,6 +92,13 @@ regen_srcinfo() {
     fi
 
     log "makepkg not present — falling back to docker archlinux/base-devel"
+    # Strip any CR that bind-mount may have introduced. Local PKGBUILDs are
+    # LF-only, but GHA runners occasionally deliver CRLF on the mount.
+    if file PKGBUILD | grep -q CRLF; then
+        log "stripping CRLF from PKGBUILD"
+        tr -d '\r' < PKGBUILD > PKGBUILD.tmp && mv PKGBUILD.tmp PKGBUILD
+    fi
+
     docker run --rm --network=host \
         -v "$PWD:/pkg:z" \
         -w /pkg \
