@@ -55,6 +55,9 @@ if [[ "$expected_sha512_hex" != "$actual_sha512_hex" ]]; then
 fi
 
 # --- Mutate PKGBUILD --------------------------------------------------
+# 9router-bin uses ${pkgname}-${pkgver}.tgz shell interpolation, so we
+# only need to bump pkgver; the source URL string is derived from it at
+# build time and never appears as a literal in the file.
 new_pkgver="${new_pkgver}" new_sha256="${new_sha256}" \
 python3 - <<'PY'
 import os, re, pathlib
@@ -64,12 +67,6 @@ p = pathlib.Path("PKGBUILD")
 txt = p.read_text()
 txt = re.sub(r"^pkgver=.*", f"pkgver={pkgver}", txt, count=1, flags=re.M)
 txt = re.sub(r"^pkgrel=.*", "pkgrel=1", txt, count=1, flags=re.M)
-txt = re.sub(
-    r'"9router-[0-9][^"]*\.tgz"',
-    f'"9router-{pkgver}.tgz"',
-    txt,
-    count=1,
-)
 
 def replace_first_hex(m):
     body = m.group(1)
