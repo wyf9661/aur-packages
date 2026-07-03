@@ -85,22 +85,28 @@ regen_srcinfo() {
     fi
 
     log "makepkg not present — falling back to docker archlinux/base-devel"
-    # Strip any CR that bind-mount may have introduced. Local PKGBUILDs are
-    # LF-only, but GHA runners occasionally deliver CRLF on the mount.
-    if file PKGBUILD | grep -q CRLF; then
-        log "stripping CRLF from PKGBUILD"
-        tr -d '\r' < PKGBUILD > PKGBUILD.tmp && mv PKGBUILD.tmp PKGBUILD
-    fi
-
     docker run --rm --network=host \
         -v "$PWD:/pkg:z" \
         -w /pkg \
         archlinux:base-devel \
         bash -c '
+            set +e
+            echo "=== diagnostics ==="
+            echo "makepkg: $(which makepkg 2>&1)"
+            echo "npm:     $(which npm 2>&1)"
+            echo "node:    $(which node 2>&1)"
+            echo "=== PKGBUILD first 80 bytes (od) ==="
+            head -c 80 /pkg/PKGBUILD | od -c | head -5
+            echo "=== bash -n on PKGBUILD ==="
+            bash -n /pkg/PKGBUILD 2>&1
+            echo "=== makepkg --version ==="
+            makepkg --version 2>&1 | head -3
             pacman -Sy --noconfirm >/dev/null
             useradd -m -s /bin/bash build 2>/dev/null || true
             chown -R build:build /pkg
             su build -c "cd /pkg && makepkg --printsrcinfo > .SRCINFO"
+            echo "=== SRCINFO head ==="
+            head -5 /pkg/.SRCINFO
         '
 }
 
