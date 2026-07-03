@@ -96,15 +96,26 @@ jobs:
         # mutates PKGBUILD in the AUR clone. Without this step, the
         # mirror-back step would commit the OLD monorepo PKGBUILD to
         # GitHub, undoing the upstream sync.
-        # Wrapper exposes AUR_PKGBASE via $GITHUB_ENV.
+        #
+        # In 'all' mode AUR_PKGBASE gets overwritten by each invocation
+        # of scripts/update.sh. So we derive pkgbase from each PKGBUILD
+        # directly here instead of trusting the env var.
         run: |
           for pkg in ${{ steps.pick.outputs.packages }}; do
-              src="/tmp/aur-workspace/${AUR_PKGBASE}/PKGBUILD"
               dst="packages/${pkg}/PKGBUILD"
+              # Derive pkgbase by sourcing the (already-bumped) PKGBUILD.
+              pkgbase="$(bash -c '
+                  set +e
+                  source "$1" 2>/dev/null
+                  if [[ -n "${pkgbase:-}" ]]; then echo "$pkgbase"
+                  elif [[ -n "${pkgname:-}" ]]; then echo "$pkgname"; fi
+              ' -- "$dst" 2>/dev/null)"
+              [[ -z "$pkgbase" ]] && pkgbase="$pkg"
+              src="/tmp/aur-workspace/${pkgbase}/PKGBUILD"
               if [[ -f "$src" ]]; then
                   if ! diff -q "$src" "$dst" >/dev/null 2>&1; then
                       cp "$src" "$dst"
-                      echo "synced PKGBUILD for ${pkg} (pkgbase=${AUR_PKGBASE})"
+                      echo "synced PKGBUILD for ${pkg} (pkgbase=${pkgbase})"
                   fi
               else
                   echo "warning: $src not found, skipping sync for ${pkg}"
