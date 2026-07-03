@@ -78,15 +78,89 @@ p.write_text(txt)
 PY
 
 # --- Regenerate .SRCINFO ----------------------------------------------
-# AUR's git server regenerates .SRCINFO automatically on push (see
-# https://docs.aur.archlinux.org/aur-submission.html), so we don't need
-# to run makepkg locally — and we explicitly avoid it because invoking
-# it inside a Docker container on GitHub Actions has proven unreliable
-# (bind-mount / shell-parser edge cases). If you ever need the file for
-# local testing, run `makepkg --printsrcinfo > .SRCINFO` on an Arch host.
+# AUR requires .SRCINFO in the same commit as PKGBUILD. We don't ship
+# makepkg on GHA, so generate it in pure Python from the existing
+# .SRCINFO on disk (which came from the AUR clone), bumping only the
+# version and the first sha256sum.
+new_pkgver="${new_pkgver}" new_sha256="${new_sha256}" \
+python3 - <<'PY'
+import os, re, pathlib, sys
+
+pkgver = os.environ["new_pkgver"]
+new_sha = os.environ["new_sha256"]
+
+srcinfo_path = pathlib.Path(".SRCINFO")
+if not srcinfo_path.exists():
+    print("ERROR: .SRCINFO not found in AUR clone (expected from rsync)",
+          file=sys.stderr)
+    sys.exit(1)
+
+text = srcinfo_path.read_text()
+
+# Update pkgver = X (only first occurrence, in the pkgbase block)
+text, n_ver = re.subn(
+    r"^\tpkgver = .*$",
+    f"\tpkgver = {pkgver}",
+    text, count=1, flags=re.M,
+)
+if n_ver != 1:
+    print(f"ERROR: .SRCINFO pkgver line not updated (matched {n_ver})",
+          file=sys.stderr)
+    sys.exit(1)
+
+# Update first sha256sums line
+text, n_sha = re.subn(
+    r"^\tsha256sums = [0-9a-f]{64}$",
+    f"\tsha256sums = {new_sha}",
+    text, count=1, flags=re.M,
+)
+if n_sha != 1:
+    print(f"ERROR: .SRCINFO first sha256sums line not updated (matched {n_sha})",
+          file=sys.stderr)
+    sys.exit(1)
+
+# Update source= lines that reference the tarball literal. 9router-bin's
+# AUR-side .SRCINFO has `source = 9router-bin-0.5.12.tgz::https://...`
+# (with both a local filename and a remote URL joined by `::`).
+text = re.sub(
+    r"^\tsource = 9router-bin-[0-9][^\s]*\.tgz::https://registry\.npmjs\.org/9router/-/9router-[0-9][^\s]*$",
+    f"\tsource = 9router-bin-{pkgver}.tgz::"
+    f"https://registry.npmjs.org/9router/-/9router-{pkgver}.tgz",
+    text, count=1, flags=re.M,
+)
+
+# Drop source= lines that reference files we no longer ship.
+# Currently: fix-tokenplan-*.py (dropped in upstream commit 9102c4c).
+for obsolete in ("fix-tokenplan-region.py", "fix-tokenplan-ui-region.py"):
+    text, _ = re.subn(
+        rf"^\tsource = {re.escape(obsolete)}$\n",
+        "",
+        text, flags=re.M,
+    )
+
+# Drop the matching sha256sums entries.  The AUR-side SRCINFO currently
+# has 6 sha256sums lines for the OLD PKGBUILD (which still had the two
+# fix scripts).  After we removed them we want 4 entries: tarball,
+# 9router.sh, 9router.service, .env.example.  We trim from the end of
+# the list — those are the helper-file hashes.
+#
+# Decide how many to keep by counting source= lines that remain.
+remaining_sources = re.findall(r"^\tsource = .+$", text, flags=re.M)
+target_sha_count = len(remaining_sources)
+
+all_shas = list(re.finditer(r"^\tsha256sums = ([0-9a-f]{64})$", text, flags=re.M))
+if len(all_shas) > target_sha_count:
+    new_text = text
+    for m in reversed(all_shas[target_sha_count:]):
+        new_text = new_text[:m.start()] + new_text[m.end():]
+    text = new_text
+
+srcinfo_path.write_text(text)
+print(f"[9router] regenerated .SRCINFO (pkgver={pkgver})")
+PY
 
 # --- Commit ------------------------------------------------------------
-git add PKGBUILD .SRCINFO 2>/dev/null || git add PKGBUILD
+git add PKGBUILD .SRCINFO
 git -c user.name='wyf9661' \
     -c user.email='wyf9661@hotmail.com' \
     commit -m "bump 9router-bin to ${new_pkgver}"
