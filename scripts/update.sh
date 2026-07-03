@@ -64,7 +64,12 @@ fi
 # Sync files from monorepo into AUR clone. The monorepo is the source
 # of truth for PKGBUILD + helpers; package-specific update.sh handles
 # version bumps.
-rsync -a --delete \
+#
+# IMPORTANT: no --delete here. The AUR clone carries .SRCINFO, which
+# is generated from PKGBUILD at AUR-side build time and is NOT in our
+# monorepo. Dropping it would force every run to regenerate from
+# scratch.
+rsync -a \
     --exclude='.git' \
     --exclude='update.sh' \
     "${PKG_DIR}/" "${WORKSPACE_DIR}/${PKGBASE}/"
