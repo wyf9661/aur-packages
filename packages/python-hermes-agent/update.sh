@@ -82,18 +82,61 @@ p.write_text(txt)
 PY
 
 # --- Regenerate .SRCINFO ----------------------------------------------
-# makepkg ships in base-devel, but the .SRCINFO format is stable and
-# trivial to regenerate by reading the PKGBUILD directly. We delegate
-# --- Regenerate .SRCINFO ----------------------------------------------
-# AUR's git server regenerates .SRCINFO automatically on push (see
-# https://docs.aur.archlinux.org/aur-submission.html), so we don't need
-# to run makepkg locally — and we explicitly avoid it because invoking
-# it inside a Docker container on GitHub Actions has proven unreliable
-# (bind-mount / shell-parser edge cases). If you ever need the file for
-# local testing, run `makepkg --printsrcinfo > .SRCINFO` on an Arch host.
+# AUR requires .SRCINFO in the same commit as PKGBUILD. We don't ship
+# makepkg on GHA, so generate it in pure Python from the existing
+# .SRCINFO on disk (which came from the AUR clone), bumping only the
+# version and the first sha256sum.
+pkgver="${pkgver}" new_sha256="${new_sha256}" clean_tag="${clean_tag}" \
+python3 - <<'PY'
+import os, re, pathlib, sys
+
+pkgver = os.environ["pkgver"]
+clean_tag = os.environ["clean_tag"]
+new_sha = os.environ["new_sha256"]
+
+srcinfo_path = pathlib.Path(".SRCINFO")
+if not srcinfo_path.exists():
+    print("ERROR: .SRCINFO not found in AUR clone (expected from rsync)",
+          file=sys.stderr)
+    sys.exit(1)
+
+text = srcinfo_path.read_text()
+
+# Update pkgver = X
+text, n_ver = re.subn(
+    r"^\tpkgver = .*$",
+    f"\tpkgver = {pkgver}",
+    text, count=1, flags=re.M,
+)
+if n_ver != 1:
+    print(f"ERROR: .SRCINFO pkgver line not updated (matched {n_ver})",
+          file=sys.stderr)
+    sys.exit(1)
+
+# Update first sha256sums line
+text, n_sha = re.subn(
+    r"^\tsha256sums = [0-9a-f]{64}$",
+    f"\tsha256sums = {new_sha}",
+    text, count=1, flags=re.M,
+)
+if n_sha != 1:
+    print(f"ERROR: .SRCINFO first sha256sums line not updated (matched {n_sha})",
+          file=sys.stderr)
+    sys.exit(1)
+
+# Update source URL if it references the tag literal
+text = re.sub(
+    r"^\tsource = https://github\.com/NousResearch/hermes-agent/archive/refs/tags/v[0-9][^/]*\.tar\.gz$",
+    f"\tsource = https://github.com/NousResearch/hermes-agent/archive/refs/tags/v{clean_tag}.tar.gz",
+    text, count=1, flags=re.M,
+)
+
+srcinfo_path.write_text(text)
+print(f"[hermes] regenerated .SRCINFO (pkgver={pkgver})")
+PY
 
 # --- Commit ------------------------------------------------------------
-git add PKGBUILD .SRCINFO 2>/dev/null || git add PKGBUILD
+git add PKGBUILD .SRCINFO
 git -c user.name='wyf9661' \
     -c user.email='wyf9661@hotmail.com' \
     commit -m "bump python-hermes-agent to ${pkgver} (${clean_tag})"

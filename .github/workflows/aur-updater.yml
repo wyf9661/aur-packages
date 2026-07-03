@@ -91,6 +91,26 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Sync bumped PKGBUILDs back to monorepo
+        # The wrapper rsyncs monorepo -> AUR clone, then the updater
+        # mutates PKGBUILD in the AUR clone. Without this step, the
+        # mirror-back step would commit the OLD monorepo PKGBUILD to
+        # GitHub, undoing the upstream sync.
+        # Wrapper exposes AUR_PKGBASE via $GITHUB_ENV.
+        run: |
+          for pkg in ${{ steps.pick.outputs.packages }}; do
+              src="/tmp/aur-workspace/${AUR_PKGBASE}/PKGBUILD"
+              dst="packages/${pkg}/PKGBUILD"
+              if [[ -f "$src" ]]; then
+                  if ! diff -q "$src" "$dst" >/dev/null 2>&1; then
+                      cp "$src" "$dst"
+                      echo "synced PKGBUILD for ${pkg} (pkgbase=${AUR_PKGBASE})"
+                  fi
+              else
+                  echo "warning: $src not found, skipping sync for ${pkg}"
+              fi
+          done
+
       - name: Mirror back to monorepo (audit trail)
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then

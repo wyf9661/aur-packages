@@ -74,9 +74,14 @@ if [[ -z "$PKGBASE" ]]; then
     exit 1
 fi
 
+# Expose pkgbase to caller (workflow step reads it from $GITHUB_ENV).
+# Only meaningful in GHA; harmless elsewhere.
+if [[ -n "${GITHUB_ENV:-}" ]]; then
+    echo "AUR_PKGBASE=${PKGBASE}" >> "$GITHUB_ENV"
+fi
+
 AUR_REMOTE="aur@aur.archlinux.org:${PKGBASE}.git"
 
-mkdir -p "$WORKSPACE_DIR"
 if [[ -d "${WORKSPACE_DIR}/${PKGBASE}/.git" ]]; then
     log "Pulling existing clone of ${PKGBASE}"
     (cd "${WORKSPACE_DIR}/${PKGBASE}" && git pull --rebase --autostash)
@@ -86,13 +91,14 @@ else
 fi
 
 # Sync files from monorepo into AUR clone. The monorepo is the source
-# of truth for PKGBUILD + helpers; package-specific update.sh handles
-# version bumps.
+# of truth for everything; the AUR clone is a transient staging area
+# we mutate and push from.
 #
 # IMPORTANT: no --delete here. The AUR clone carries .SRCINFO, which
 # is generated from PKGBUILD at AUR-side build time and is NOT in our
 # monorepo. Dropping it would force every run to regenerate from
 # scratch.
+mkdir -p "${WORKSPACE_DIR}/${PKGBASE}"
 rsync -a \
     --exclude='.git' \
     --exclude='update.sh' \
