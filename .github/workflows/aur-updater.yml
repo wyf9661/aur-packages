@@ -40,13 +40,13 @@ jobs:
 
       - name: Decode AUR SSH deploy key
         env:
-          AUR_SSH_KEY_B64: ${{ secrets.AUR_SSH_KEY }}
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
-          if [[ -z "$AUR_SSH_KEY_B64" ]]; then
+          if [[ -z "$AUR_SSH_KEY" ]]; then
             echo "::error::AUR_SSH_KEY secret not set"
             exit 1
           fi
-          echo "$AUR_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
+          printf '%s' "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Smoke-test AUR SSH connection
