@@ -49,7 +49,31 @@ EOF
 fi
 
 # --- AUR clone/pull ---------------------------------------------------
-PKGBASE="$(grep '^pkgname=' "${PKG_DIR}/PKGBUILD" | head -1 | cut -d= -f2- | tr -d \"\')"
+# Resolve pkgbase via shell-style variable expansion of PKGBUILD. We
+# source it in a subshell with `set -e` disabled so any parse glitches
+# fall through to the raw pkgname= line.
+PKGBASE="$(bash -c '
+    set +e
+    # shellcheck disable=SC1090
+    source "$1" 2>/dev/null
+    if [[ -n "${pkgbase:-}" ]]; then
+        echo "$pkgbase"
+    elif [[ -n "${pkgname:-}" ]]; then
+        echo "$pkgname"
+    fi
+' -- "${PKG_DIR}/PKGBUILD" 2>/dev/null)"
+
+# Fallback: take the first pkgname= line as-is (handles pkgs that mix
+# shell vars in pkgname=).
+if [[ -z "$PKGBASE" ]]; then
+    PKGBASE="$(grep -E '^pkgname=' "${PKG_DIR}/PKGBUILD" | head -1 | cut -d= -f2- | tr -d \"\')"
+fi
+
+if [[ -z "$PKGBASE" ]]; then
+    err "Could not determine pkgbase from ${PKG_DIR}/PKGBUILD"
+    exit 1
+fi
+
 AUR_REMOTE="aur@aur.archlinux.org:${PKGBASE}.git"
 
 mkdir -p "$WORKSPACE_DIR"
