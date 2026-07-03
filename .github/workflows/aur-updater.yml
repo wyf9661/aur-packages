@@ -1,0 +1,95 @@
+name: aur-updater
+
+on:
+  schedule:
+    # Daily 06:00 UTC. Staggered minutes avoid API rate limits.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to update"
+        required: true
+        type: choice
+        options:
+          - python-hermes-agent
+          - 9router-bin
+          - all
+
+jobs:
+  update:
+    name: bump ${{ inputs.package || 'all' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Install base tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3 rsync openssh-client
+
+      - name: Setup SSH for AUR push
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          # Pre-populate known_hosts so first connection doesn't prompt.
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Decode AUR SSH deploy key
+        env:
+          AUR_SSH_KEY_B64: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          if [[ -z "$AUR_SSH_KEY_B64" ]]; then
+            echo "::error::AUR_SSH_KEY secret not set"
+            exit 1
+          fi
+          echo "$AUR_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Smoke-test AUR SSH connection
+        # AUR rejects interactive shells with exit 255 — that's expected.
+        # We only verify that the key exchange succeeded (i.e. no
+        # "Permission denied (publickey)" or connection-level error).
+        run: |
+          out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 \
+                    -i ~/.ssh/id_ed25519 \
+                    aur@aur.archlinux.org 2>&1 || true)
+          echo "$out"
+          if echo "$out" | grep -qE "Permission denied|Connection reset|Connection refused|timed out|No route"; then
+            echo "::error::SSH connectivity to AUR failed"
+            exit 1
+          fi
+
+      - name: Determine packages to update
+        id: pick
+        run: |
+          choice="${{ inputs.package || 'all' }}"
+          if [[ "$choice" == "all" ]]; then
+            pkgs="python-hermes-agent 9router-bin"
+          else
+            pkgs="$choice"
+          fi
+          echo "packages=$pkgs" >> "$GITHUB_OUTPUT"
+
+      - name: Run updater
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          for pkg in ${{ steps.pick.outputs.packages }}; do
+            echo "::group::Updating ${pkg}"
+            bash scripts/update.sh "packages/${pkg}"
+            echo "::endgroup::"
+          done
+
+      - name: Mirror back to monorepo (audit trail)
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add packages/
+            git commit -m "sync: bumped versions" || true
+            git push
+          fi
