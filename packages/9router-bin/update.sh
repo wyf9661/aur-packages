@@ -85,33 +85,28 @@ regen_srcinfo() {
     fi
 
     log "makepkg not present — falling back to docker archlinux/base-devel"
-    # Diagnostic: capture the in-place mutated PKGBUILD before docker
-    cp PKGBUILD /tmp/PKGBUILD.before-docker
-    head -25 /tmp/PKGBUILD.before-docker > /tmp/PKGBUILD.head.txt
-    wc -l /tmp/PKGBUILD.before-docker > /tmp/PKGBUILD.wc.txt
-    md5sum /tmp/PKGBUILD.before-docker > /tmp/PKGBUILD.md5.txt
-
     docker run --rm --network=host \
         -v "$PWD:/pkg:z" \
-        -v "/tmp/PKGBUILD.head.txt:/tmp/head.txt:ro" \
-        -v "/tmp/PKGBUILD.wc.txt:/tmp/wc.txt:ro" \
-        -v "/tmp/PKGBUILD.md5.txt:/tmp/md5.txt:ro" \
         -w /pkg \
         archlinux:base-devel \
         bash -c '
             set +e
-            echo "=== bind-mount diff: local vs docker ==="
-            echo "local head:"; cat /tmp/head.txt
-            echo "local wc:"; cat /tmp/wc.txt
-            echo "local md5:"; cat /tmp/md5.txt
-            echo "docker head:"; head -25 /pkg/PKGBUILD
-            echo "docker wc:"; wc -l /pkg/PKGBUILD
-            echo "docker md5:"; md5sum /pkg/PKGBUILD
-            echo "=== bash -n with explicit path ==="
+            echo "=== sed -n 22p (real line 22 in file) ==="
+            sed -n "22p" /pkg/PKGBUILD
+            echo "=== sed -n 22p | od -c ==="
+            sed -n "22p" /pkg/PKGBUILD | od -c | head -2
+            echo "=== full sed -n 20,24p ==="
+            sed -n "20,24p" /pkg/PKGBUILD
+            echo "=== check for stray chars at line start ==="
+            grep -n "^[^[:print:][:space:]]" /pkg/PKGBUILD | head -5 || echo "no non-printable line starts"
+            echo "=== bash -n on full file ==="
             bash -n /pkg/PKGBUILD 2>&1
-            echo "=== bash -n after tr to strip CR ==="
-            tr -d "\r" < /pkg/PKGBUILD > /tmp/PKGBUILD.lf
-            bash -n /tmp/PKGBUILD.lf 2>&1
+            echo "=== try each chunk: lines 1-22 only ==="
+            head -22 /pkg/PKGBUILD > /tmp/p1
+            bash -n /tmp/p1 2>&1
+            echo "=== try: lines 1-22 + 39-40 ==="
+            ( head -22 /pkg/PKGBUILD; sed -n "39,40p" /pkg/PKGBUILD ) > /tmp/p2
+            bash -n /tmp/p2 2>&1
         '
 }
 
