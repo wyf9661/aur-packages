@@ -40,14 +40,19 @@ jobs:
 
       - name: Decode AUR SSH deploy key
         env:
-          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+          AUR_SSH_KEY_B64: ${{ secrets.AUR_SSH_KEY }}
         run: |
-          if [[ -z "$AUR_SSH_KEY" ]]; then
+          if [[ -z "$AUR_SSH_KEY_B64" ]]; then
             echo "::error::AUR_SSH_KEY secret not set"
             exit 1
           fi
-          printf '%s' "$AUR_SSH_KEY" > ~/.ssh/id_ed25519
+          echo "$AUR_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          # Sanity check the decoded key is a valid OpenSSH private key.
+          head -c 5 ~/.ssh/id_ed25519 | grep -q -- "-----BEGIN" || {
+            echo "::error::Decoded key does not start with -----BEGIN"
+            exit 1
+          }
 
       - name: Smoke-test AUR SSH connection
         # AUR rejects interactive shells with exit 255 — that's expected.
