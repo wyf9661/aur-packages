@@ -111,11 +111,28 @@ rsync -a \
 )
 
 # --- Push --------------------------------------------------------------
+# Two scenarios produce pushable commits:
+#   1. Updater found a new upstream version and bumped PKGBUILD/.SRCINFO
+#   2. Updater short-circuited (no upstream bump) but monorepo's
+#      PKGBUILD/helpers differ from AUR's (e.g. we fixed a syntax bug
+#      locally). In that case rsync above already staged the diff; we
+#      just need to commit and push it.
 (
     cd "${WORKSPACE_DIR}/${PKGBASE}"
     # Set up upstream tracking on first run so @{u} resolves.
     git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 || \
         git branch --set-upstream-to="$AUR_REMOTE/$(git rev-parse --abbrev-ref HEAD)" HEAD
+
+    # If the updater already committed, those are unpushed commits.
+    # If it didn't (no-op), rsync may still have left unstaged changes
+    # from monorepo → AUR clone sync. Commit those first.
+    if [[ -n "$(git status --porcelain)" ]]; then
+        log "Committing monorepo-synced changes (no upstream bump needed)"
+        git add -A
+        git -c user.name='wyf9661' \
+            -c user.email='wyf9661@hotmail.com' \
+            commit -m "sync: monorepo PKGBUILD/helpers" || true
+    fi
 
     unpushed="$(git log '@{u}..HEAD' --oneline 2>/dev/null || true)"
     if [[ -n "$unpushed" ]]; then
