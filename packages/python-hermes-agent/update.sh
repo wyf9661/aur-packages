@@ -75,7 +75,7 @@ txt = re.sub(r"^pkgrel=.*", "pkgrel=1", txt, count=1, flags=re.M)
 def replace_first_hex(m):
     body = m.group(1)
     new_body, n = re.subn(r"'[0-9a-f]{64}'", f"'{new_sha}'", body, count=1)
-    return f"sha256sums=({new_body}"
+    return f"sha256sums=({new_body})"
 
 txt = re.sub(r"sha256sums=\((.*?)\)", replace_first_hex, txt, count=1, flags=re.S)
 p.write_text(txt)
