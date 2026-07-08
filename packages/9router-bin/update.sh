@@ -163,4 +163,4 @@ PY
 git add PKGBUILD .SRCINFO
 git -c user.name='wyf9661' \
     -c user.email='wyf9661@hotmail.com' \
-    commit -m "bump 9router-bin to ${new_pkgver}"
+    commit -m "bump 9router-bin to ${new_pkgver}" || true

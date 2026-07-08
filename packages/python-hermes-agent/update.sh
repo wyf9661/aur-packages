@@ -139,4 +139,4 @@ PY
 git add PKGBUILD .SRCINFO
 git -c user.name='wyf9661' \
     -c user.email='wyf9661@hotmail.com' \
-    commit -m "bump python-hermes-agent to ${pkgver} (${clean_tag})"
+    commit -m "bump python-hermes-agent to ${pkgver} (${clean_tag})" || true
