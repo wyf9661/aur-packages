@@ -20,7 +20,7 @@ jobs:
     name: bump ${{ inputs.package || 'all' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Checkout monorepo
