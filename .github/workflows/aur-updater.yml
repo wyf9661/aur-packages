@@ -91,10 +91,10 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Sync bumped PKGBUILDs back to monorepo
+      - name: Sync bumped AUR files back to monorepo
         # The wrapper rsyncs monorepo -> AUR clone, then the updater
-        # mutates PKGBUILD in the AUR clone. Without this step, the
-        # mirror-back step would commit the OLD monorepo PKGBUILD to
+        # mutates PKGBUILD/.SRCINFO in the AUR clone. Without this step, the
+        # mirror-back step would commit the OLD monorepo files to
         # GitHub, undoing the upstream sync.
         #
         # In 'all' mode AUR_PKGBASE gets overwritten by each invocation
@@ -119,6 +119,17 @@ jobs:
                   fi
               else
                   echo "warning: $src not found, skipping sync for ${pkg}"
+              fi
+
+              srcinfo_src="/tmp/aur-workspace/${pkgbase}/.SRCINFO"
+              srcinfo_dst="packages/${pkg}/.SRCINFO"
+              if [[ -f "$srcinfo_src" ]]; then
+                  if [[ ! -f "$srcinfo_dst" ]] || ! diff -q "$srcinfo_src" "$srcinfo_dst" >/dev/null 2>&1; then
+                      cp "$srcinfo_src" "$srcinfo_dst"
+                      echo "synced .SRCINFO for ${pkg} (pkgbase=${pkgbase})"
+                  fi
+              else
+                  echo "warning: $srcinfo_src not found, skipping .SRCINFO sync for ${pkg}"
               fi
           done
 
