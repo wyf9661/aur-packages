@@ -123,6 +123,34 @@ rsync -a \
     git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 || \
         git branch --set-upstream-to="$AUR_REMOTE/$(git rev-parse --abbrev-ref HEAD)" HEAD
 
+    # Monorepo-only packaging fixes can change pkgrel without a new upstream
+    # version. AUR's package database reads pkgrel from .SRCINFO, not directly
+    # from PKGBUILD; keep it in sync before deciding whether there is anything
+    # to commit. This is intentionally narrow (pkgrel only) because version
+    # bumps still use the package-specific .SRCINFO regenerators above.
+    if [[ -f PKGBUILD && -f .SRCINFO ]]; then
+        pkgrel="$(bash -c '
+            set +e
+            source "$1" 2>/dev/null
+            printf "%s" "${pkgrel:-}"
+        ' -- PKGBUILD 2>/dev/null)"
+        if [[ -n "$pkgrel" ]] && ! grep -qE "^[[:space:]]*pkgrel = ${pkgrel}$" .SRCINFO; then
+            pkgrel="$pkgrel" python3 - <<'PY'
+import os, pathlib, re, sys
+
+path = pathlib.Path('.SRCINFO')
+text = path.read_text()
+pkgrel = os.environ['pkgrel']
+text, n = re.subn(r'^\tpkgrel = .+$', f'\tpkgrel = {pkgrel}', text, count=1, flags=re.M)
+if n != 1:
+    print(f'ERROR: .SRCINFO pkgrel line not updated (matched {n})', file=sys.stderr)
+    sys.exit(1)
+path.write_text(text)
+PY
+            log "Synced .SRCINFO pkgrel=${pkgrel} from PKGBUILD"
+        fi
+    fi
+
     # If the updater already committed, those are unpushed commits.
     # If it didn't (no-op), rsync may still have left unstaged changes
     # from monorepo → AUR clone sync. Commit those first.
