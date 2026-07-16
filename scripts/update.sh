@@ -119,9 +119,6 @@ rsync -a \
 #      just need to commit and push it.
 (
     cd "${WORKSPACE_DIR}/${PKGBASE}"
-    # Set up upstream tracking on first run so @{u} resolves.
-    git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 || \
-        git branch --set-upstream-to="$AUR_REMOTE/$(git rev-parse --abbrev-ref HEAD)" HEAD
 
     # Monorepo-only packaging fixes can change pkgrel without a new upstream
     # version. AUR's package database reads pkgrel from .SRCINFO, not directly
@@ -162,11 +159,31 @@ PY
             commit -m "sync: monorepo PKGBUILD/helpers" || true
     fi
 
-    unpushed="$(git log '@{u}..HEAD' --oneline 2>/dev/null || true)"
-    if [[ -n "$unpushed" ]]; then
-        log "Pushing to AUR: $(echo "$unpushed" | wc -l) commit(s)"
-        git push
+    branch="$(git rev-parse --abbrev-ref HEAD)"
+    remote_has_head=0
+    if git ls-remote --heads origin 2>/dev/null | grep -q .; then
+        remote_has_head=1
+    fi
+
+    if [[ "$remote_has_head" -eq 0 ]]; then
+        # First publish into an empty AUR package repo (no remote HEAD yet).
+        if git rev-parse --verify HEAD >/dev/null 2>&1; then
+            log "Initial AUR publish on branch ${branch}"
+            git push -u origin "HEAD:${branch}"
+        else
+            log "Nothing to push (empty history)"
+        fi
     else
-        log "Nothing to push (no new commits)"
+        # Set up upstream tracking when missing so @{u} resolves.
+        if ! git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+            git branch --set-upstream-to="origin/${branch}" HEAD 2>/dev/null || true
+        fi
+        unpushed="$(git log '@{u}..HEAD' --oneline 2>/dev/null || true)"
+        if [[ -n "$unpushed" ]]; then
+            log "Pushing to AUR: $(echo "$unpushed" | wc -l) commit(s)"
+            git push
+        else
+            log "Nothing to push (no new commits)"
+        fi
     fi
 )
