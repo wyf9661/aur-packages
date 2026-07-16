@@ -6,6 +6,7 @@ GitHub Actions monorepo for automating AUR package version bumps.
 
 - `packages/python-hermes-agent` — tracks [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) GitHub releases
 - `packages/9router-bin` — tracks [9router](https://registry.npmjs.org/9router) on npm
+- `packages/metapi` — tracks [wyf9661/metapi](https://github.com/wyf9661/metapi) GitHub releases (v1.3.1 baseline)
 
 ## Layout
 
@@ -50,6 +51,7 @@ happen only when a new version is detected.
 |------------------------|-------------------------------------|---------------|-----------------------|
 | python-hermes-agent    | GitHub releases API                 | `tag` + `pkgver` | `sha256` of source tarball |
 | 9router-bin            | npm registry `latest` endpoint      | `pkgver`        | `sha256` of .tgz (cross-checked against npm `integrity` sha512) |
+| metapi                 | GitHub releases API (wyf9661/metapi)| `pkgver`        | `sha256` of source tarball + local helpers |
 
 ## Auditing
 
