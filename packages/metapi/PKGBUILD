@@ -21,12 +21,14 @@ source=("${pkgname}-v${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.g
         "${pkgname}.install"
         "${pkgname}.sysusers"
         "${pkgname}.tmpfiles")
-sha256sums=('74c6ff867e9c2b681cd0db1ad65c695a6a5f07f2e1ef2dcfdeb6c01fd5ca5d83'
+sha256sums=(
+            '74c6ff867e9c2b681cd0db1ad65c695a6a5f07f2e1ef2dcfdeb6c01fd5ca5d83'
             '1f5dede1712658ac3e276d83ac4cad541a636c54f084b07d8c7778b8c69bce95'
             '885b68e552440009d1fa8802650ad9af283f3eec641e9c22bd6a505832b0a177'
             '6bd54a63c90a531fe937c5ecb04881b3ca08b24175669ec70c198e5dca6aea48'
             '355b30e8ae273a87d14bd7afcac367cee0d44f01d57d41eac6747c67d17afb40'
-            '6f52d5800aa5cd0c8e5eb5a463fb09711c7460bcf9f6c95a477c3303f37f067c')
+            '6f52d5800aa5cd0c8e5eb5a463fb09711c7460bcf9f6c95a477c3303f37f067c'
+)
 
 backup=("etc/${pkgname}/env")
 install="${pkgname}.install"
