@@ -4,6 +4,7 @@
 # Upstream source: https://github.com/wyf9661/metapi
 # Version scheme: GitHub tag "vX.Y.Z" → pkgver=X.Y.Z
 # Also ships local helpers: .service/.conf/.install/.sysusers/.tmpfiles
+# + backup timer units, and MUST keep backup=("etc/metapi/env")
 
 set -euo pipefail
 
@@ -78,17 +79,19 @@ conf_sha="$(hash_file metapi.conf)"
 install_sha="$(hash_file metapi.install)"
 sysusers_sha="$(hash_file metapi.sysusers)"
 tmpfiles_sha="$(hash_file metapi.tmpfiles)"
+backup_svc_sha="$(hash_file metapi-backup.service)"
+backup_timer_sha="$(hash_file metapi-backup.timer)"
 
 # --- Mutate PKGBUILD ---------------------------------------------------
 pkgver="$pkgver" tag="$tag" need_bump="$need_bump" \
 new_tarball_sha256="$new_tarball_sha256" \
 svc_sha="$svc_sha" conf_sha="$conf_sha" install_sha="$install_sha" \
 sysusers_sha="$sysusers_sha" tmpfiles_sha="$tmpfiles_sha" \
+backup_svc_sha="$backup_svc_sha" backup_timer_sha="$backup_timer_sha" \
 python3 - <<'PY'
 import os, re, pathlib
 
 pkgver = os.environ["pkgver"]
-tag = os.environ["tag"]
 need_bump = os.environ["need_bump"] == "1"
 sums = [
     os.environ["new_tarball_sha256"],
@@ -97,6 +100,8 @@ sums = [
     os.environ["install_sha"],
     os.environ["sysusers_sha"],
     os.environ["tmpfiles_sha"],
+    os.environ["backup_svc_sha"],
+    os.environ["backup_timer_sha"],
 ]
 
 p = pathlib.Path("PKGBUILD")
@@ -105,9 +110,37 @@ txt = re.sub(r"^pkgver=.*", f"pkgver={pkgver}", txt, count=1, flags=re.M)
 if need_bump:
     txt = re.sub(r"^pkgrel=.*", "pkgrel=1", txt, count=1, flags=re.M)
 
-# Rewrite full sha256sums array (6 entries: tarball + 5 helpers)
+# CRITICAL: never drop backup= for /etc/metapi/env
+if "backup=" not in txt:
+    if 'install="${pkgname}.install"' in txt:
+        txt = txt.replace(
+            'install="${pkgname}.install"',
+            'backup=("etc/${pkgname}/env")\ninstall="${pkgname}.install"',
+            1,
+        )
+    else:
+        raise SystemExit("backup= missing and install= marker not found")
+
+# Ensure helper sources include backup units
+if "metapi-backup.service" not in txt:
+    txt = txt.replace(
+        '"${pkgname}.tmpfiles")',
+        '"${pkgname}.tmpfiles"\n        "${pkgname}-backup.service"\n        "${pkgname}-backup.timer")',
+        1,
+    )
+
+# Ensure package() installs backup units
+if 'install -Dm644 "${srcdir}/${pkgname}-backup.service"' not in txt:
+    txt = txt.replace(
+        'install -Dm644 "${srcdir}/${pkgname}.service" "${pkgdir}/usr/lib/systemd/system/${pkgname}.service"',
+        'install -Dm644 "${srcdir}/${pkgname}.service" "${pkgdir}/usr/lib/systemd/system/${pkgname}.service"\n'
+        '  install -Dm644 "${srcdir}/${pkgname}-backup.service" "${pkgdir}/usr/lib/systemd/system/${pkgname}-backup.service"\n'
+        '  install -Dm644 "${srcdir}/${pkgname}-backup.timer" "${pkgdir}/usr/lib/systemd/system/${pkgname}-backup.timer"',
+        1,
+    )
+
+# Rewrite full sha256sums array (8 entries: tarball + 7 helpers)
 sums_block = "sha256sums=(\n" + "\n".join(f"            '{s}'" for s in sums) + "\n)"
-# original uses mixed indentation; match sha256sums=( ... )
 if re.search(r"sha256sums=\([^)]*\)", txt, flags=re.S):
     txt = re.sub(r"sha256sums=\([^)]*\)", sums_block, txt, count=1, flags=re.S)
 else:
@@ -122,7 +155,7 @@ txt = re.sub(
 )
 
 p.write_text(txt)
-print(f"[metapi] PKGBUILD updated pkgver={pkgver} need_bump={need_bump}")
+print(f"[metapi] PKGBUILD updated pkgver={pkgver} need_bump={need_bump} backup=kept")
 PY
 
 # --- Regenerate .SRCINFO ----------------------------------------------
@@ -130,6 +163,7 @@ pkgver="$pkgver" \
 new_tarball_sha256="$new_tarball_sha256" \
 svc_sha="$svc_sha" conf_sha="$conf_sha" install_sha="$install_sha" \
 sysusers_sha="$sysusers_sha" tmpfiles_sha="$tmpfiles_sha" \
+backup_svc_sha="$backup_svc_sha" backup_timer_sha="$backup_timer_sha" \
 python3 - <<'PY'
 import os, pathlib
 
@@ -141,6 +175,8 @@ sums = [
     os.environ["install_sha"],
     os.environ["sysusers_sha"],
     os.environ["tmpfiles_sha"],
+    os.environ["backup_svc_sha"],
+    os.environ["backup_timer_sha"],
 ]
 
 # Full regenerate (works for first-time package without existing .SRCINFO)
@@ -164,17 +200,21 @@ srcinfo = f"""pkgbase = metapi
 	source = metapi.install
 	source = metapi.sysusers
 	source = metapi.tmpfiles
+	source = metapi-backup.service
+	source = metapi-backup.timer
 	sha256sums = {sums[0]}
 	sha256sums = {sums[1]}
 	sha256sums = {sums[2]}
 	sha256sums = {sums[3]}
 	sha256sums = {sums[4]}
 	sha256sums = {sums[5]}
+	sha256sums = {sums[6]}
+	sha256sums = {sums[7]}
 
 pkgname = metapi
 """
 pathlib.Path(".SRCINFO").write_text(srcinfo)
-print(f"[metapi] regenerated .SRCINFO (pkgver={pkgver})")
+print(f"[metapi] regenerated .SRCINFO (pkgver={pkgver}, backup=etc/metapi/env)")
 PY
 
 # If nothing changed vs current git tree, still allow wrapper to commit rsync sync.
@@ -183,7 +223,9 @@ if git diff --quiet -- PKGBUILD .SRCINFO 2>/dev/null; then
 fi
 
 # --- Commit ------------------------------------------------------------
-git add PKGBUILD .SRCINFO metapi.service metapi.conf metapi.install metapi.sysusers metapi.tmpfiles 2>/dev/null || true
+git add PKGBUILD .SRCINFO \
+  metapi.service metapi.conf metapi.install metapi.sysusers metapi.tmpfiles \
+  metapi-backup.service metapi-backup.timer 2>/dev/null || true
 git -c user.name='wyf9661' \
     -c user.email='wyf9661@hotmail.com' \
     commit -m "bump metapi to ${pkgver}" || true

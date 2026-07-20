@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Metapi database backup
+After=metapi.service
+
+[Service]
+Type=oneshot
+User=metapi
+Group=metapi
+ExecStartPre=/usr/bin/mkdir -p /var/lib/metapi/backups
+ExecStart=/usr/bin/sh -c 'src=/var/lib/metapi/hub.db; dest=/var/lib/metapi/backups/hub-$(date +%%Y%%m%%d).db; cp "$src" "$dest.tmp" && mv "$dest.tmp" "$dest" && chmod 640 "$dest" && find /var/lib/metapi/backups -name "hub-*.db" -mtime +7 -delete'
