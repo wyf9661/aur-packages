@@ -7,4 +7,6 @@ Type=oneshot
 User=metapi
 Group=metapi
 ExecStartPre=/usr/bin/mkdir -p /var/lib/metapi/backups
-ExecStart=/usr/bin/sh -c 'src=/var/lib/metapi/hub.db; dest=/var/lib/metapi/backups/hub-$(date +%%Y%%m%%d).db; cp "$src" "$dest.tmp" && mv "$dest.tmp" "$dest" && chmod 640 "$dest" && find /var/lib/metapi/backups -name "hub-*.db" -mtime +7 -delete'
+# Prefer SQLite online backup API for a consistent snapshot under WAL.
+# Fall back to cp if sqlite3 CLI is unavailable.
+ExecStart=/usr/bin/sh -c 'set -e; src=/var/lib/metapi/hub.db; dest=/var/lib/metapi/backups/hub-$(date +%%Y%%m%%d).db; tmp="$dest.tmp"; rm -f "$tmp"; if command -v sqlite3 >/dev/null 2>&1; then sqlite3 "$src" ".backup '\''$tmp'\''"; else cp "$src" "$tmp"; fi; mv "$tmp" "$dest"; chmod 640 "$dest"; find /var/lib/metapi/backups -name "hub-*.db" -mtime +7 -delete'
