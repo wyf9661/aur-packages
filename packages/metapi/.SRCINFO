@@ -8,8 +8,8 @@ pkgbase = metapi
 	license = MIT
 	makedepends = npm
 	depends = nodejs>=25
-	optdepends = mariadb: local MySQL-compatible server (set DB_TYPE=mysql + DB_URL)
-	optdepends = postgresql: local PostgreSQL server (set DB_TYPE=postgres + DB_URL)
+	optdepends = mysql2: MySQL database support
+	optdepends = postgresql: PostgreSQL database support
 	options = !debug
 	backup = etc/metapi/env
 	source = metapi-v1.3.7.tar.gz::https://github.com/wyf9661/metapi/archive/refs/tags/v1.3.7.tar.gz
