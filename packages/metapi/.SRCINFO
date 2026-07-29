@@ -1,6 +1,6 @@
 pkgbase = metapi
 	pkgdesc = Meta-layer management and unified proxy for AI API aggregation platforms
-	pkgver = 1.4.1
+	pkgver = 1.4.2
 	pkgrel = 1
 	url = https://github.com/wyf9661/metapi
 	install = metapi.install
@@ -8,11 +8,11 @@ pkgbase = metapi
 	license = MIT
 	makedepends = npm
 	depends = nodejs>=25
-	optdepends = mariadb: local MySQL-compatible server (set DB_TYPE=mysql + DB_URL)
-	optdepends = postgresql: local PostgreSQL server (set DB_TYPE=postgres + DB_URL)
+	optdepends = mysql2: MySQL database support
+	optdepends = postgresql: PostgreSQL database support
 	options = !debug
 	backup = etc/metapi/env
-	source = metapi-v1.4.1.tar.gz::https://github.com/wyf9661/metapi/archive/refs/tags/v1.4.1.tar.gz
+	source = metapi-v1.4.2.tar.gz::https://github.com/wyf9661/metapi/archive/refs/tags/v1.4.2.tar.gz
 	source = metapi.service
 	source = metapi.conf
 	source = metapi.install
@@ -20,7 +20,7 @@ pkgbase = metapi
 	source = metapi.tmpfiles
 	source = metapi-backup.service
 	source = metapi-backup.timer
-	sha256sums = edcdeaf9bcbd082228a7f331401c355e31699c909b7a9d3c6aadb9f9f5a66c27
+	sha256sums = 80715e4083c4b1f1e6594bc9dc9c26f05b1ace34d7e472282c710216eb5e113d
 	sha256sums = 1f5dede1712658ac3e276d83ac4cad541a636c54f084b07d8c7778b8c69bce95
 	sha256sums = 885b68e552440009d1fa8802650ad9af283f3eec641e9c22bd6a505832b0a177
 	sha256sums = 9ea3f6da87f5a204c792c94707423ab657ee1ba0df729a05204f004b3576b75e
