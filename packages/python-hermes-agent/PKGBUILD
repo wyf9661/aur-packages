@@ -62,7 +62,7 @@ prepare() {
 
 package() {
   cd "${srcdir}/hermes-agent-${tag}"
-  python -m build --quiet --wheel --no-isolation
+  HERMES_NIX_BUILD=1 python -m build --quiet --wheel --no-isolation
   python -m installer --destdir="${pkgdir}" dist/*.whl
 
   # Pre-build TUI frontend in $srcdir, then place dist/entry.js under hermes_cli/tui_dist/
