@@ -15,19 +15,24 @@ jobs:
           ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
           echo "$AUR_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-      - name: Probe SSH login
+      - name: A) scp-like full clone
         run: |
-          out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/id_ed25519 aur@aur.archlinux.org 2>&1 || true)
-          echo "login: $out" | head -2
-      - name: Probe clone OTHER package (arch-update)
+          rm -rf /tmp/a && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/a 2>&1 | tail -2
+          echo "A exit: $?"
+      - name: B) scp-like shallow clone
         run: |
-          timeout 30 git clone --depth 1 ssh://aur@aur.archlinux.org/arch-update.git /tmp/probe-other 2>&1 | tail -3
-          echo "--- other clone exit: $? ---"
-      - name: Probe clone OWN package (metapi)
+          rm -rf /tmp/b && timeout 30 git clone --depth 1 aur@aur.archlinux.org:arch-update.git /tmp/b 2>&1 | tail -2
+          echo "B exit: $?"
+      - name: C) ssh:// full clone
         run: |
-          timeout 30 git clone --depth 1 ssh://aur@aur.archlinux.org/metapi.git /tmp/probe-own 2>&1 | tail -3
-          echo "--- own clone exit: $? ---"
-      - name: Probe push (dry-run to metapi, no changes)
+          rm -rf /tmp/c && timeout 30 git clone ssh://aur@aur.archlinux.org/arch-update.git /tmp/c 2>&1 | tail -2
+          echo "C exit: $?"
+      - name: D) ssh:// shallow clone (known-good)
         run: |
-          cd /tmp/probe-own && timeout 30 git push --dry-run origin HEAD:master 2>&1 | tail -3
-          echo "--- own push dry-run exit: $? ---"
+          rm -rf /tmp/d && timeout 30 git clone --depth 1 ssh://aur@aur.archlinux.org/arch-update.git /tmp/d 2>&1 | tail -2
+          echo "D exit: $?"
+      - name: E) scp-like full clone WITH ssh config (update.sh style)
+        run: |
+          printf 'Host aur.archlinux.org\n    IdentityFile ~/.ssh/id_ed25519\n    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n    User aur\n' >> ~/.ssh/config
+          rm -rf /tmp/e && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/e 2>&1 | tail -2
+          echo "E exit: $?"
