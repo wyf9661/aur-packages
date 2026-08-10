@@ -7,8 +7,6 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout monorepo
-        uses: actions/checkout@v4
       - name: Setup SSH
         env:
           AUR_SSH_KEY_B64: ${{ secrets.AUR_SSH_KEY }}
@@ -17,45 +15,12 @@ jobs:
           ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
           echo "$AUR_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-      - name: A) scp-like full clone
+      - name: Loop probe (12x ls-remote, no pipe, real exit)
         run: |
-          rm -rf /tmp/a && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/a 2>&1 | tail -2
-          echo "A exit: $?"
-      - name: B) scp-like shallow clone
-        run: |
-          rm -rf /tmp/b && timeout 30 git clone --depth 1 aur@aur.archlinux.org:arch-update.git /tmp/b 2>&1 | tail -2
-          echo "B exit: $?"
-      - name: C) ssh:// full clone
-        run: |
-          rm -rf /tmp/c && timeout 30 git clone ssh://aur@aur.archlinux.org/arch-update.git /tmp/c 2>&1 | tail -2
-          echo "C exit: $?"
-      - name: D) ssh:// shallow clone (known-good)
-        run: |
-          rm -rf /tmp/d && timeout 30 git clone --depth 1 ssh://aur@aur.archlinux.org/arch-update.git /tmp/d 2>&1 | tail -2
-          echo "D exit: $?"
-      - name: E) scp-like full clone WITH ssh config (update.sh style)
-        run: |
-          printf 'Host aur.archlinux.org\n    IdentityFile ~/.ssh/id_ed25519\n    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n    User aur\n' >> ~/.ssh/config
-          rm -rf /tmp/e && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/e 2>&1 | tail -2
-          echo "E exit: $?"
-      - name: F) apt-reinstalled openssh-client then clone
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends openssh-client >/dev/null 2>&1
-          echo "ssh version after apt: $(ssh -V 2>&1)"
-          rm -rf /tmp/f && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/f 2>&1 | tail -2
-          echo "F exit: $?"
-      - name: G) interactive SSH login (smoke-style) THEN clone
-        run: |
-          out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/id_ed25519 aur@aur.archlinux.org 2>&1 || true)
-          echo "login output: $(echo "$out" | head -1)"
-          rm -rf /tmp/g && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/g 2>&1 | tail -2
-          echo "G clone exit: $?"
-      - name: H) post-checkout clone (REAL exit code)
-        run: |
-          rm -rf /tmp/h
-          timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/h >/tmp/h.log 2>&1
-          echo "H REAL exit: $?"
-          tail -2 /tmp/h.log
-
-
-
+          for i in $(seq 1 12); do
+            out=$(timeout 20 git ls-remote ssh://aur@aur.archlinux.org/arch-update.git HEAD 2>&1)
+            ec=$?
+            msg=$(echo "$out" | head -1 | cut -c1-70)
+            echo "probe $i: exit=$ec | $msg"
+            sleep 20
+          done
