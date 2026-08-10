@@ -36,3 +36,10 @@ jobs:
           printf 'Host aur.archlinux.org\n    IdentityFile ~/.ssh/id_ed25519\n    IdentitiesOnly yes\n    StrictHostKeyChecking accept-new\n    User aur\n' >> ~/.ssh/config
           rm -rf /tmp/e && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/e 2>&1 | tail -2
           echo "E exit: $?"
+      - name: F) apt-reinstalled openssh-client then clone
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends openssh-client >/dev/null 2>&1
+          echo "ssh version after apt: $(ssh -V 2>&1)"
+          rm -rf /tmp/f && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/f 2>&1 | tail -2
+          echo "F exit: $?"
+
