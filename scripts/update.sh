@@ -103,6 +103,7 @@ fetch_aur_snapshot() {
     rm -f "$tmp"
     if [[ ! -d "$dir/.git" ]]; then
         git -C "$dir" init -q
+        git -C "$dir" remote add origin "$AUR_REMOTE" 2>/dev/null || true
         git -C "$dir" add -A
         git -C "$dir" -c user.name='wyf9661' \
             -c user.email='wyf9661@hotmail.com' \
@@ -191,42 +192,22 @@ PY
     fi
 
     branch="$(git rev-parse --abbrev-ref HEAD)"
-    remote_has_head=0
-    if git ls-remote --heads origin 2>/dev/null | grep -q .; then
-        remote_has_head=1
+    if ! git remote get-url origin >/dev/null 2>&1; then
+        git remote add origin "$AUR_REMOTE"
     fi
-
-    if [[ "$remote_has_head" -eq 0 ]]; then
-        # First publish into an empty AUR package repo (no remote HEAD yet).
-        if git rev-parse --verify HEAD >/dev/null 2>&1; then
-            log "Initial AUR publish on branch ${branch}"
-            git push -u origin "HEAD:${branch}"
+    if git rev-parse --verify HEAD >/dev/null 2>&1; then
+        # AUR's SSH read path (ls-remote/fetch) is refused during the
+        # malicious-packages incident, so we cannot rely on it to detect a
+        # remote head. Attempt the push directly; any rejection is treated
+        # as non-fast-forward from snapshot-rebuilt history and forced
+        # (the package is ours alone — safe to rewrite).
+        if git push -u origin "HEAD:${branch}"; then
+            log "Pushed to AUR"
         else
-            log "Nothing to push (empty history)"
+            log "Normal push rejected; forcing (snapshot-rebuilt history)"
+            git push --force -u origin "HEAD:${branch}"
         fi
     else
-        # Set up upstream tracking when missing so @{u} resolves.
-        if ! git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
-            git branch --set-upstream-to="origin/${branch}" HEAD 2>/dev/null || true
-        fi
-        unpushed="$(git log '@{u}..HEAD' --oneline 2>/dev/null || true)"
-        if [[ -n "$unpushed" ]]; then
-            log "Pushing to AUR: $(echo "$unpushed" | wc -l) commit(s)"
-            if ! git push; then
-                # Snapshot rebuilds create a fresh local history unrelated
-                # to AUR's, so a normal push is rejected as non-fast-forward.
-                # Compare trees (history-independent): only force when the
-                # content actually differs from what AUR has.
-                if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1 \
-                   && git diff --quiet "origin/${branch}" HEAD; then
-                    log "Tree identical to AUR — skipping force push"
-                else
-                    log "Normal push rejected; forcing (snapshot-rebuilt history)"
-                    git push --force
-                fi
-            fi
-        else
-            log "Nothing to push (no new commits)"
-        fi
+        log "Nothing to push (empty history)"
     fi
 )
