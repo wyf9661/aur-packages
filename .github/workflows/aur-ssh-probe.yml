@@ -17,6 +17,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
       - name: Loop probe (12x ls-remote, no pipe, real exit)
         run: |
+          set +e
           for i in $(seq 1 12); do
             out=$(timeout 20 git ls-remote ssh://aur@aur.archlinux.org/arch-update.git HEAD 2>&1)
             ec=$?
