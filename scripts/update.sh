@@ -204,25 +204,31 @@ PY
             log "No changes vs AUR snapshot — nothing to push"
             exit 0
         fi
-        # AUR's SSH git service (read AND write) is intermittently refused
-        # during the malicious-packages incident: pushes return "The AUR is
-        # down due to maintenance" even though other maintainers get through
-        # at times. Retry with backoff so a run lands inside an open window.
+        # AUR's SSH git service (read AND write) flips open/closed on a
+        # ~1-minute cycle during the malicious-packages incident: pushes
+        # return "The AUR is down due to maintenance" in closed windows,
+        # then succeed in open windows (observed 2026-08-10: refused at
+        # 13:26/13:35/13:41, accepted at 13:34/13:40). Poll with a cheap
+        # ls-remote probe and push the moment a window opens.
         attempt=0
-        while [[ "$attempt" -lt 5 ]]; do
+        pushed=0
+        while [[ "$attempt" -lt 90 ]]; do
             attempt=$((attempt + 1))
-            if git push -u origin "HEAD:${branch}" 2>&1 \
-               || git push --force -u origin "HEAD:${branch}" 2>&1; then
-                log "Pushed to AUR (attempt ${attempt})"
-                break
+            if git ls-remote --heads origin HEAD >/dev/null 2>&1; then
+                if git push -u origin "HEAD:${branch}" 2>&1 \
+                   || git push --force -u origin "HEAD:${branch}" 2>&1; then
+                    log "Pushed to AUR (attempt ${attempt})"
+                    pushed=1
+                    break
+                fi
             fi
-            if [[ "$attempt" -lt 5 ]]; then
-                log "push attempt ${attempt}/5 failed (AUR incident); retrying in $((attempt * 20))s"
-                sleep "$((attempt * 20))"
+            if [[ "$attempt" -lt 90 ]]; then
+                [[ $((attempt % 5)) -eq 0 ]] && log "window probe ${attempt}/90 (AUR incident cycle)"
+                sleep 10
             fi
         done
-        if [[ "$attempt" -ge 5 ]]; then
-            err "push failed after 5 attempts — AUR SSH write path still locked"
+        if [[ "$pushed" -eq 0 ]]; then
+            err "push failed after 90 probes (~15 min) — AUR SSH write path never opened"
             exit 1
         fi
     else
