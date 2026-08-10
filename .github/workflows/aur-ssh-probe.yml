@@ -1,0 +1,33 @@
+name: aur-ssh-probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH
+        env:
+          AUR_SSH_KEY_B64: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          echo "$AUR_SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Probe SSH login
+        run: |
+          out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/id_ed25519 aur@aur.archlinux.org 2>&1 || true)
+          echo "login: $out" | head -2
+      - name: Probe clone OTHER package (arch-update)
+        run: |
+          timeout 30 git clone --depth 1 ssh://aur@aur.archlinux.org/arch-update.git /tmp/probe-other 2>&1 | tail -3
+          echo "--- other clone exit: $? ---"
+      - name: Probe clone OWN package (metapi)
+        run: |
+          timeout 30 git clone --depth 1 ssh://aur@aur.archlinux.org/metapi.git /tmp/probe-own 2>&1 | tail -3
+          echo "--- own clone exit: $? ---"
+      - name: Probe push (dry-run to metapi, no changes)
+        run: |
+          cd /tmp/probe-own && timeout 30 git push --dry-run origin HEAD:master 2>&1 | tail -3
+          echo "--- own push dry-run exit: $? ---"
