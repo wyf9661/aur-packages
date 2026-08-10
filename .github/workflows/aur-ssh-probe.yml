@@ -50,10 +50,12 @@ jobs:
           echo "login output: $(echo "$out" | head -1)"
           rm -rf /tmp/g && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/g 2>&1 | tail -2
           echo "G clone exit: $?"
-      - name: H) post-checkout clone
+      - name: H) post-checkout clone (REAL exit code)
         run: |
-          rm -rf /tmp/h && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/h 2>&1 | tail -2
-          echo "H clone exit: $?"
+          rm -rf /tmp/h
+          timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/h >/tmp/h.log 2>&1
+          echo "H REAL exit: $?"
+          tail -2 /tmp/h.log
 
 
 
