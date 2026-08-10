@@ -82,12 +82,43 @@ fi
 
 AUR_REMOTE="aur@aur.archlinux.org:${PKGBASE}.git"
 
+# --- AUR workspace acquisition -----------------------------------------
+# AUR has been under a malicious-packages incident since 2026-06: the
+# git-over-SSH READ path (clone/fetch/upload-pack) is refused with
+# "The AUR is down due to maintenance", while authenticated pushes still
+# work. Fall back to cgit HTTPS snapshots for the read side; per-package
+# updaters and the push logic below are unchanged.
+fetch_aur_snapshot() {
+    local dir="$1"
+    local tmp
+    tmp="$(mktemp)"
+    log "SSH clone/pull refused; fetching cgit HTTPS snapshot for ${PKGBASE}"
+    curl -fsSL --retry 3 --connect-timeout 15 --max-time 60 \
+        "https://aur.archlinux.org/cgit/aur.git/snapshot/${PKGBASE}.tar.gz" \
+        -o "$tmp" || { err "cgit snapshot download failed for ${PKGBASE}"; rm -f "$tmp"; return 1; }
+    # Snapshot extracts to ${PKGBASE}/; replace the workspace copy.
+    rm -rf "$dir"
+    mkdir -p "$(dirname "$dir")"
+    tar -xzf "$tmp" -C "$(dirname "$dir")"
+    rm -f "$tmp"
+    if [[ ! -d "$dir/.git" ]]; then
+        git -C "$dir" init -q
+        git -C "$dir" add -A
+        git -C "$dir" -c user.name='wyf9661' \
+            -c user.email='wyf9661@hotmail.com' \
+            commit -q -m "sync: AUR snapshot" || true
+    fi
+    log "Snapshot restored for ${PKGBASE}"
+}
+
 if [[ -d "${WORKSPACE_DIR}/${PKGBASE}/.git" ]]; then
     log "Pulling existing clone of ${PKGBASE}"
-    (cd "${WORKSPACE_DIR}/${PKGBASE}" && git pull --rebase --autostash)
+    (cd "${WORKSPACE_DIR}/${PKGBASE}" && git pull --rebase --autostash) \
+        || fetch_aur_snapshot "${WORKSPACE_DIR}/${PKGBASE}"
 else
     log "Cloning ${PKGBASE} from AUR"
-    git clone "$AUR_REMOTE" "${WORKSPACE_DIR}/${PKGBASE}"
+    git clone "$AUR_REMOTE" "${WORKSPACE_DIR}/${PKGBASE}" \
+        || fetch_aur_snapshot "${WORKSPACE_DIR}/${PKGBASE}"
 fi
 
 # Sync files from monorepo into AUR clone. The monorepo is the source
@@ -181,7 +212,19 @@ PY
         unpushed="$(git log '@{u}..HEAD' --oneline 2>/dev/null || true)"
         if [[ -n "$unpushed" ]]; then
             log "Pushing to AUR: $(echo "$unpushed" | wc -l) commit(s)"
-            git push
+            if ! git push; then
+                # Snapshot rebuilds create a fresh local history unrelated
+                # to AUR's, so a normal push is rejected as non-fast-forward.
+                # Compare trees (history-independent): only force when the
+                # content actually differs from what AUR has.
+                if git rev-parse --verify "origin/${branch}" >/dev/null 2>&1 \
+                   && git diff --quiet "origin/${branch}" HEAD; then
+                    log "Tree identical to AUR — skipping force push"
+                else
+                    log "Normal push rejected; forcing (snapshot-rebuilt history)"
+                    git push --force
+                fi
+            fi
         else
             log "Nothing to push (no new commits)"
         fi
