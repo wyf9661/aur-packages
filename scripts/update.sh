@@ -196,16 +196,34 @@ PY
         git remote add origin "$AUR_REMOTE"
     fi
     if git rev-parse --verify HEAD >/dev/null 2>&1; then
-        # AUR's SSH read path (ls-remote/fetch) is refused during the
-        # malicious-packages incident, so we cannot rely on it to detect a
-        # remote head. Attempt the push directly; any rejection is treated
-        # as non-fast-forward from snapshot-rebuilt history and forced
-        # (the package is ours alone — safe to rewrite).
-        if git push -u origin "HEAD:${branch}"; then
-            log "Pushed to AUR"
-        else
-            log "Normal push rejected; forcing (snapshot-rebuilt history)"
-            git push --force -u origin "HEAD:${branch}"
+        # Snapshot workspace: a single commit means the tree is identical
+        # to what AUR already has (no rsync diff, no bump) — nothing to
+        # push, and forcing would just rewrite history for no change.
+        commit_count="$(git rev-list --count HEAD)"
+        if [[ "$commit_count" -le 1 ]]; then
+            log "No changes vs AUR snapshot — nothing to push"
+            exit 0
+        fi
+        # AUR's SSH git service (read AND write) is intermittently refused
+        # during the malicious-packages incident: pushes return "The AUR is
+        # down due to maintenance" even though other maintainers get through
+        # at times. Retry with backoff so a run lands inside an open window.
+        attempt=0
+        while [[ "$attempt" -lt 5 ]]; do
+            attempt=$((attempt + 1))
+            if git push -u origin "HEAD:${branch}" 2>&1 \
+               || git push --force -u origin "HEAD:${branch}" 2>&1; then
+                log "Pushed to AUR (attempt ${attempt})"
+                break
+            fi
+            if [[ "$attempt" -lt 5 ]]; then
+                log "push attempt ${attempt}/5 failed (AUR incident); retrying in $((attempt * 20))s"
+                sleep "$((attempt * 20))"
+            fi
+        done
+        if [[ "$attempt" -ge 5 ]]; then
+            err "push failed after 5 attempts — AUR SSH write path still locked"
+            exit 1
         fi
     else
         log "Nothing to push (empty history)"
