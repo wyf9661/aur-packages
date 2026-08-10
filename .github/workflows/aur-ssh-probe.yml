@@ -42,4 +42,11 @@ jobs:
           echo "ssh version after apt: $(ssh -V 2>&1)"
           rm -rf /tmp/f && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/f 2>&1 | tail -2
           echo "F exit: $?"
+      - name: G) interactive SSH login (smoke-style) THEN clone
+        run: |
+          out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 -i ~/.ssh/id_ed25519 aur@aur.archlinux.org 2>&1 || true)
+          echo "login output: $(echo "$out" | head -1)"
+          rm -rf /tmp/g && timeout 30 git clone aur@aur.archlinux.org:arch-update.git /tmp/g 2>&1 | tail -2
+          echo "G clone exit: $?"
+
 
