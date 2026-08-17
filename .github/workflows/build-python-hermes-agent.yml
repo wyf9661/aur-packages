@@ -1,0 +1,31 @@
+name: build-python-hermes-agent
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git nodejs npm python-build python-installer python-wheel \
+            python-setuptools
+
+      - name: Build package
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          su builder -c 'cd "$GITHUB_WORKSPACE/packages/python-hermes-agent" && makepkg --syncdeps --noconfirm --cleanbuild --clean'
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-hermes-agent
+          path: packages/python-hermes-agent/*.pkg.tar.zst
+          if-no-files-found: error
