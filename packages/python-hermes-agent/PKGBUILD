@@ -46,7 +46,7 @@ source=(
     "0001-fix-daemon-pool-py314-ThreadPoolExecutor-API.patch"
 )
 sha256sums=(
-    '2b202b0cbcecfaeec85572b60d66cd481ca387248b592878bf92204de78abefe'
+    '655639384767611feee5ef5d6871e1a1b2294f7b1fd80fb401e9b888a418f4f9'
     '6b3357098d9e70eb33c95e2f7d12c2bdc016f6e7933b517d85f1399d50caea71'
 )
 
