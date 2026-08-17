@@ -41,11 +41,11 @@ log "upstream tag=${clean_tag} pkgver=${pkgver}"
 # --- Compare against current PKGBUILD -----------------------------------
 current_tag="$(grep -E '^tag=' PKGBUILD | cut -d= -f2)"
 current_pkgver="$(grep -E '^pkgver=' PKGBUILD | cut -d= -f2)"
+current_sha256="$(sed -n '/^sha256sums=(/,/^)/p' PKGBUILD | grep -Eo "'[0-9a-f]{64}'" | head -1 | tr -d "'")"
 
-if [[ "$current_tag" == "$clean_tag" && "$current_pkgver" == "$pkgver" ]]; then
-    log "no update (${current_pkgver})"
-    exit 0
-fi
+# Always verify the source checksum. The monorepo may already contain the
+# new version while its checksum is still stale, so comparing versions alone
+# can incorrectly skip the update.
 
 # --- Download upstream tarball and compute sha256 -----------------------
 tar_url="https://github.com/NousResearch/hermes-agent/archive/refs/tags/v${clean_tag}.tar.gz"
@@ -56,6 +56,11 @@ log "fetching ${tar_url}"
 curl -fsSL -o "$tmp_tar" "$tar_url"
 new_sha256="$(sha256sum "$tmp_tar" | awk '{print $1}')"
 log "sha256=${new_sha256}"
+
+if [[ "$current_tag" == "$clean_tag" && "$current_pkgver" == "$pkgver" && "$current_sha256" == "$new_sha256" ]]; then
+    log "no update (${current_pkgver})"
+    exit 0
+fi
 
 # --- Mutate PKGBUILD ---------------------------------------------------
 # python-hermes-agent has exactly one sha256 entry (the tarball). We use
