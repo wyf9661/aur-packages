@@ -57,6 +57,21 @@ current_tag="$(grep -E '^tag=' PKGBUILD | cut -d= -f2)"
 current_pkgver="$(grep -E '^pkgver=' PKGBUILD | cut -d= -f2)"
 current_sha256="$(sed -n '/^sha256sums=(/,/^)/p' PKGBUILD | grep -Eo "'[0-9a-f]{64}'" | head -1 | tr -d "'")"
 
+# --- Drop obsolete helper files -----------------------------------------
+# The AUR clone is synced with `rsync -a` (no --delete), so helper files
+# removed from the monorepo would linger in the AUR repo forever. Sweep
+# *.patch files the PKGBUILD no longer references (2026-10-14: upstream
+# adopted the daemon_pool fix, so the local patch was dropped).
+shopt -s nullglob
+for f in *.patch; do
+    if ! grep -qF -- "$f" PKGBUILD; then
+        git rm -q --ignore-unmatch -- "$f" 2>/dev/null || true
+        rm -f -- "$f"
+        log "dropped obsolete helper: ${f}"
+    fi
+done
+shopt -u nullglob
+
 # Always verify the source checksum. The monorepo may already contain the
 # new version while its checksum is still stale, so comparing versions alone
 # can incorrectly skip the update.
