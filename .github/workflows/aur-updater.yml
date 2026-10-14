@@ -85,12 +85,23 @@ jobs:
       - name: Run updater
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+          # Authenticates the api.github.com release lookups so shared-runner
+          # IPs cannot hit the unauthenticated rate limit (403 on 2026-09-19).
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # A single failing package must not abort the rest (2026-10-08:
+          # python-hermes-agent's parse failure froze every package for six
+          # days). Continue through the list, then fail the job at the end.
+          rc=0
           for pkg in ${{ steps.pick.outputs.packages }}; do
             echo "::group::Updating ${pkg}"
-            bash scripts/update.sh "packages/${pkg}"
+            if ! bash scripts/update.sh "packages/${pkg}"; then
+              echo "::error::${pkg}: updater failed (continuing with remaining packages)"
+              rc=1
+            fi
             echo "::endgroup::"
           done
+          echo "UPDATER_FAILED=${rc}" >> "$GITHUB_ENV"
 
       - name: Sync bumped AUR files back to monorepo
         # The wrapper rsyncs monorepo -> AUR clone, then the updater
@@ -142,4 +153,13 @@ jobs:
             git add packages/
             git commit -m "sync: bumped versions" || true
             git push
+          fi
+
+      - name: Fail when any package updater failed
+        # The loop above keeps running after a failure so healthy packages
+        # still get pushed and synced; the job outcome stays honest here.
+        run: |
+          if [[ "${UPDATER_FAILED:-0}" != "0" ]]; then
+            echo "::error::One or more package updaters failed — see the ::error:: lines above."
+            exit 1
           fi

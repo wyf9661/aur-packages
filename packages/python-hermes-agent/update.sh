@@ -2,9 +2,13 @@
 # updater: python-hermes-agent
 #
 # Upstream source: https://github.com/NousResearch/hermes-agent
-# Version scheme: tag is "vYYYY.M.P" (e.g. v2026.7.1); pkgver is the
-# Hermes CLI release (e.g. 0.18.0) extracted from the release name
-# "Hermes Agent v<ver> (YYYY.M.P) — <codename>".
+# Version scheme (two eras):
+#   - v0.21.6+ (2026-10-08): tag and release name are both plain
+#     "v<ver>" (e.g. name "Hermes Agent v0.21.7", tag v0.21.7).
+#   - older: tag "vYYYY.M.P" (e.g. v2026.9.24) with the CLI version in
+#     the release name: "Hermes Agent v0.21.5 (v2026.9.24)".
+# pkgver is the CLI version parsed from the release name, falling back
+# to the tag when the name carries no parseable version.
 
 set -euo pipefail
 
@@ -14,7 +18,13 @@ log() { printf '\033[1;36m[hermes]\033[0m %s\n' "$*"; }
 tmp_meta="$(mktemp)"
 trap 'rm -f "$tmp_meta"' EXIT
 
-curl -fsSL \
+# Authenticate when a token is available: shared GHA runner IPs can hit the
+# unauthenticated api.github.com rate limit (one run died with curl: (22) 403).
+curl_args=(-fsSL)
+if [[ -n "${GH_TOKEN:-}" ]]; then
+    curl_args+=(-H "Authorization: Bearer ${GH_TOKEN}")
+fi
+curl "${curl_args[@]}" \
     https://api.github.com/repos/NousResearch/hermes-agent/releases/latest \
     -o "$tmp_meta"
 
@@ -25,8 +35,12 @@ with open(sys.argv[1]) as f:
 tag = data["tag_name"]
 name = data["name"]
 clean_tag = tag.lstrip("v")
-m = re.match(r"^Hermes Agent v([0-9][^ ]*) ", name)
-pkgver = m.group(1) if m else ""
+# Stop the version at a space or "(" so both naming eras parse:
+# "Hermes Agent v0.21.7" and "Hermes Agent v0.21.5 (v2026.9.24)".
+m = re.match(r"^Hermes Agent v([0-9][^ (]*)", name)
+# v0.21.6+ tags carry the plain version themselves, so the tag is a safe
+# fallback when the name shape changes again.
+pkgver = m.group(1) if m else clean_tag
 print(f"{clean_tag} {pkgver}")
 PY
 )

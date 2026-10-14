@@ -14,7 +14,13 @@ log() { printf '\033[1;32m[metapi]\033[0m %s\n' "$*"; }
 tmp_meta="$(mktemp)"
 trap 'rm -f "$tmp_meta"' EXIT
 
-curl -fsSL \
+# Authenticate when a token is available: shared GHA runner IPs can hit the
+# unauthenticated api.github.com rate limit (one run died with curl: (22) 403).
+curl_args=(-fsSL)
+if [[ -n "${GH_TOKEN:-}" ]]; then
+    curl_args+=(-H "Authorization: Bearer ${GH_TOKEN}")
+fi
+curl "${curl_args[@]}" \
     https://api.github.com/repos/wyf9661/metapi/releases/latest \
     -o "$tmp_meta"
 
